@@ -1,4 +1,5 @@
 import discord
+from discord import app_commands
 from discord.ext import commands
 import asyncio
 import yt_dlp
@@ -43,9 +44,14 @@ class MusicBot(commands.Bot):
         intents = discord.Intents.default()
         intents.message_content = True
         intents.voice_states = True
-        super().__init__(command_prefix='*', intents=intents)
+        super().__init__(command_prefix='!', intents=intents)
         self.queues = {}  # Guild-specific queues
         self.current_song = {}  # Currently playing song per guild
+    
+    async def setup_hook(self):
+        """Sync slash commands with Discord"""
+        await self.tree.sync()
+        print("Slash commands synced!")
 
 
 bot = MusicBot()
@@ -133,42 +139,46 @@ async def play_next(guild_id: int):
 async def on_ready():
     print(f'Logged in as {bot.user} (ID: {bot.user.id})')
     print('------')
-    await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.listening, name="*play"))
+    await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.listening, name="music"))
 
 
-@bot.command(name="play")
-async def play(ctx, *, query: str):
+@bot.tree.command(name="play", description="Play a song from YouTube or YouTube Music")
+@app_commands.describe(query="YouTube URL, YouTube Music URL, or search terms")
+async def play(interaction: discord.Interaction, query: str):
     """Play a song from YouTube or YouTube Music"""
     
     # Check if user is in a voice channel
-    if not ctx.author.voice:
-        await ctx.send("❌ You need to be in a voice channel to use this command!")
+    if not interaction.user.voice:
+        await interaction.response.send_message("❌ You need to be in a voice channel to use this command!")
         return
     
+    # Defer the response since this might take a while
+    await interaction.response.defer()
+    
     # Connect to voice channel if not already connected
-    voice_channel = ctx.author.voice.channel
-    voice_client = ctx.guild.voice_client
+    voice_channel = interaction.user.voice.channel
+    voice_client = interaction.guild.voice_client
     
     if not voice_client:
         try:
             voice_client = await voice_channel.connect()
         except Exception as e:
-            await ctx.send(f"❌ Could not connect to voice channel: {str(e)}")
+            await interaction.followup.send(f"❌ Could not connect to voice channel: {str(e)}")
             return
     elif voice_client.channel != voice_channel:
         await voice_client.move_to(voice_channel)
     
     # Initialize queue for this guild if it doesn't exist
-    if ctx.guild.id not in bot.queues:
-        bot.queues[ctx.guild.id] = deque()
+    if interaction.guild.id not in bot.queues:
+        bot.queues[interaction.guild.id] = deque()
     
     # Add to queue
-    bot.queues[ctx.guild.id].append((query, ctx.channel))
+    bot.queues[interaction.guild.id].append((query, interaction.channel))
     
     # If nothing is playing, start playing
     if not voice_client.is_playing():
-        await ctx.send("🔍 Searching and loading...")
-        await play_next(ctx.guild.id)
+        await interaction.followup.send("🔍 Searching and loading...")
+        await play_next(interaction.guild.id)
     else:
         # Get song info for queue message
         try:
@@ -182,90 +192,90 @@ async def play(ctx, *, query: str):
                 description=f"**{data.get('title', 'Unknown')}**",
                 color=discord.Color.blue()
             )
-            embed.add_field(name="Position in queue", value=str(len(bot.queues[ctx.guild.id])))
-            await ctx.send(embed=embed)
+            embed.add_field(name="Position in queue", value=str(len(bot.queues[interaction.guild.id])))
+            await interaction.followup.send(embed=embed)
         except:
-            await ctx.send(f"✅ Added to queue (Position: {len(bot.queues[ctx.guild.id])})")
+            await interaction.followup.send(f"✅ Added to queue (Position: {len(bot.queues[interaction.guild.id])})")
 
 
-@bot.command(name="skip")
-async def skip(ctx):
+@bot.tree.command(name="skip", description="Skip the currently playing song")
+async def skip(interaction: discord.Interaction):
     """Skip the currently playing song"""
     
-    voice_client = ctx.guild.voice_client
+    voice_client = interaction.guild.voice_client
     
     if not voice_client or not voice_client.is_playing():
-        await ctx.send("❌ Nothing is playing right now!")
+        await interaction.response.send_message("❌ Nothing is playing right now!")
         return
     
     voice_client.stop()
-    await ctx.send("⏭️ Skipped!")
+    await interaction.response.send_message("⏭️ Skipped!")
 
 
-@bot.command(name="stop")
-async def stop(ctx):
+@bot.tree.command(name="stop", description="Stop the music and clear the queue")
+async def stop(interaction: discord.Interaction):
     """Stop the music and clear the queue"""
     
-    voice_client = ctx.guild.voice_client
+    voice_client = interaction.guild.voice_client
     
     if not voice_client:
-        await ctx.send("❌ I'm not in a voice channel!")
+        await interaction.response.send_message("❌ I'm not in a voice channel!")
         return
     
     # Clear the queue
-    if ctx.guild.id in bot.queues:
-        bot.queues[ctx.guild.id].clear()
+    if interaction.guild.id in bot.queues:
+        bot.queues[interaction.guild.id].clear()
     
     # Stop playing
     if voice_client.is_playing():
         voice_client.stop()
     
-    await ctx.send("⏹️ Stopped playing and cleared the queue!")
+    await interaction.response.send_message("⏹️ Stopped playing and cleared the queue!")
 
 
-@bot.command(name="pause")
-async def pause(ctx):
+@bot.tree.command(name="pause", description="Pause the currently playing song")
+async def pause(interaction: discord.Interaction):
     """Pause the currently playing song"""
     
-    voice_client = ctx.guild.voice_client
+    voice_client = interaction.guild.voice_client
     
     if not voice_client or not voice_client.is_playing():
-        await ctx.send("❌ Nothing is playing right now!")
+        await interaction.response.send_message("❌ Nothing is playing right now!")
         return
     
     voice_client.pause()
-    await ctx.send("⏸️ Paused!")
+    await interaction.response.send_message("⏸️ Paused!")
 
 
-@bot.command(name="resume")
-async def resume(ctx):
+@bot.tree.command(name="resume", description="Resume the paused song")
+async def resume(interaction: discord.Interaction):
     """Resume the paused song"""
     
-    voice_client = ctx.guild.voice_client
+    voice_client = interaction.guild.voice_client
     
     if not voice_client or not voice_client.is_paused():
-        await ctx.send("❌ Nothing is paused right now!")
+        await interaction.response.send_message("❌ Nothing is paused right now!")
         return
     
     voice_client.resume()
-    await ctx.send("▶️ Resumed!")
+    await interaction.response.send_message("▶️ Resumed!")
 
 
-@bot.command(name="queue")
-async def queue(ctx):
+@bot.tree.command(name="queue", description="Display the current queue")
+async def queue(interaction: discord.Interaction):
     """Display the current queue"""
     
-    if ctx.guild.id not in bot.queues or len(bot.queues[ctx.guild.id]) == 0:
-        if ctx.guild.id in bot.current_song:
-            current = bot.current_song[ctx.guild.id]
+    if interaction.guild.id not in bot.queues or len(bot.queues[interaction.guild.id]) == 0:
+        if interaction.guild.id in bot.current_song:
+            current = bot.current_song[interaction.guild.id]
             embed = discord.Embed(
                 title="🎵 Now Playing",
                 description=f"**{current.title}**",
                 color=discord.Color.green()
             )
-            await ctx.send(embed=embed)
+            await interaction.response.send_message(embed=embed)
         else:
-            await ctx.send("📭 The queue is empty!")
+            await interaction.response.send_message("📭 The queue is empty!")
         return
     
     embed = discord.Embed(
@@ -274,48 +284,48 @@ async def queue(ctx):
     )
     
     # Show currently playing
-    if ctx.guild.id in bot.current_song:
-        current = bot.current_song[ctx.guild.id]
+    if interaction.guild.id in bot.current_song:
+        current = bot.current_song[interaction.guild.id]
         embed.add_field(name="Now Playing", value=f"**{current.title}**", inline=False)
     
     # Show queue
-    queue_list = list(bot.queues[ctx.guild.id])
+    queue_list = list(bot.queues[interaction.guild.id])
     if queue_list:
         queue_text = "\n".join([f"{i+1}. {url}" for i, (url, _) in enumerate(queue_list[:10])])
         if len(queue_list) > 10:
             queue_text += f"\n... and {len(queue_list) - 10} more"
         embed.add_field(name="Up Next", value=queue_text, inline=False)
     
-    await ctx.send(embed=embed)
+    await interaction.response.send_message(embed=embed)
 
 
-@bot.command(name="disconnect")
-async def disconnect(ctx):
+@bot.tree.command(name="disconnect", description="Disconnect from voice channel")
+async def disconnect(interaction: discord.Interaction):
     """Disconnect from voice channel"""
     
-    voice_client = ctx.guild.voice_client
+    voice_client = interaction.guild.voice_client
     
     if not voice_client:
-        await ctx.send("❌ I'm not in a voice channel!")
+        await interaction.response.send_message("❌ I'm not in a voice channel!")
         return
     
     # Clear the queue
-    if ctx.guild.id in bot.queues:
-        bot.queues[ctx.guild.id].clear()
+    if interaction.guild.id in bot.queues:
+        bot.queues[interaction.guild.id].clear()
     
     await voice_client.disconnect()
-    await ctx.send("👋 Disconnected from voice channel!")
+    await interaction.response.send_message("👋 Disconnected from voice channel!")
 
 
-@bot.command(name="nowplaying", aliases=["np"])
-async def nowplaying(ctx):
+@bot.tree.command(name="nowplaying", description="Display the currently playing song")
+async def nowplaying(interaction: discord.Interaction):
     """Display the currently playing song"""
     
-    if ctx.guild.id not in bot.current_song:
-        await ctx.send("❌ Nothing is playing right now!")
+    if interaction.guild.id not in bot.current_song:
+        await interaction.response.send_message("❌ Nothing is playing right now!")
         return
     
-    current = bot.current_song[ctx.guild.id]
+    current = bot.current_song[interaction.guild.id]
     embed = discord.Embed(
         title="🎵 Now Playing",
         description=f"**{current.title}**",
@@ -329,7 +339,7 @@ async def nowplaying(ctx):
         minutes, seconds = divmod(current.duration, 60)
         embed.add_field(name="Duration", value=f"{int(minutes)}:{int(seconds):02d}")
     
-    await ctx.send(embed=embed)
+    await interaction.response.send_message(embed=embed)
 
 
 if __name__ == "__main__":
