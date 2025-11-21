@@ -17,52 +17,26 @@ FFMPEG_OPTIONS = {
     'options': '-vn'
 }
 
-# Function to build YDL_OPTIONS with cookie support
-def get_ydl_options():
-    options = {
-        'format': 'bestaudio/best',
-        'extractaudio': True,
-        'audioformat': 'mp3',
-        'outtmpl': '%(extractor)s-%(id)s-%(title)s.%(ext)s',
-        'restrictfilenames': True,
-        'noplaylist': True,
-        'nocheckcertificate': True,
-        'ignoreerrors': False,
-        'logtostderr': False,
-        'quiet': True,
-        'no_warnings': True,
-        'default_search': 'ytsearch',
-        'source_address': '0.0.0.0',
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
-        }],
-    }
-    
-    # Cookie handling based on yt-dlp FAQ
-    # Priority: 1. cookies.txt file, 2. Browser extraction, 3. None
-    if os.path.exists('cookies.txt'):
-        options['cookiefile'] = 'cookies.txt'
-        print("Using cookies.txt file")
-    elif os.getenv('YOUTUBE_COOKIES_BASE64'):
-        # Decode base64 cookies if provided via environment variable
-        import base64
-        try:
-            cookie_data = base64.b64decode(os.getenv('YOUTUBE_COOKIES_BASE64')).decode('utf-8')
-            with open('cookies.txt', 'w') as f:
-                f.write(cookie_data)
-            options['cookiefile'] = 'cookies.txt'
-            print("Using cookies from YOUTUBE_COOKIES_BASE64 environment variable")
-        except Exception as e:
-            print(f"Failed to decode cookies from environment variable: {e}")
-    else:
-        print("No cookies configured - YouTube may block requests")
-        print("To fix: Set YOUTUBE_COOKIES_BASE64 environment variable or provide cookies.txt")
-    
-    return options
-
-YDL_OPTIONS = get_ydl_options()
+YDL_OPTIONS = {
+    'format': 'bestaudio/best',
+    'extractaudio': True,
+    'audioformat': 'mp3',
+    'outtmpl': '%(extractor)s-%(id)s-%(title)s.%(ext)s',
+    'restrictfilenames': True,
+    'noplaylist': True,
+    'nocheckcertificate': True,
+    'ignoreerrors': False,
+    'logtostderr': False,
+    'quiet': True,
+    'no_warnings': True,
+    'default_search': 'ytsearch',
+    'source_address': '0.0.0.0',
+    'postprocessors': [{
+        'key': 'FFmpegExtractAudio',
+        'preferredcodec': 'mp3',
+        'preferredquality': '192',
+    }],
+}
 
 
 class MusicBot(commands.Bot):
